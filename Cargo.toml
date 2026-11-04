@@ -16,6 +16,9 @@ crate-type = ["cdylib"]
 [build-dependencies]
 flapigen = "0.12.3"
 env_logger = "0.11.11"
+proc-macro2 = "1.0.107"
+quote = "1.0.47"
+syn = { version = "3.0.9", features = ["full", "visit"] }
 
 [dependencies]
 log = "0.4.35"

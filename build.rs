@@ -1,3 +1,6 @@
+#[path = "src/build_compat.rs"]
+mod build_compat;
+
 use flapigen::{JavaConfig, LanguageConfig};
 use std::{env, path::{Path, PathBuf}};
 
@@ -38,9 +41,10 @@ fn main() {
             .use_null_annotation_from_package(annotation_pkg.into()),
     ))
     .merge_type_map("typemaps", include_str!("src/jni_typemaps.rs"))
-    .remove_not_generated_files_from_output_directory(true)
-    .rustfmt_bindings(true);
+    .remove_not_generated_files_from_output_directory(true);
     swig_gen.expand("etebase jni bindings", &in_src, &out_src);
+    build_compat::prune_unused_numeric_optionals(&out_src);
+    println!("cargo:rerun-if-changed=src/build_compat.rs");
     println!("cargo:rerun-if-changed=src/jni_typemaps.rs");
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed={}", in_src.display());
