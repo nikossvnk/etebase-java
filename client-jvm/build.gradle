@@ -37,6 +37,9 @@ sourceSets.main {
 tasks.named('compileJava').configure { dependsOn buildNative }
 tasks.named('processResources').configure { dependsOn buildNative }
 tasks.named('sourcesJar').configure { dependsOn buildNative, copySharedJavaSources }
+tasks.withType(Test).configureEach {
+    systemProperty 'etebase.test.classpath', sourceSets.main.runtimeClasspath.asPath
+}
 dependencies {
     api 'com.squareup.okhttp3:okhttp:5.5.1'
     testImplementation 'junit:junit:4.13.2'

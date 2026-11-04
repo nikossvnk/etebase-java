@@ -34,6 +34,10 @@ Gradle builds native code automatically. Android libraries target API 23 and use
 16 KB ELF segment alignment, verified by `llvm-readelf` before packaging. Generated
 bindings and binaries live under each module's `build/generated/`; do not commit
 them. A clean Gradle build regenerates Java even when Cargo artifacts remain cached.
+The guarded AST pass in `src/build_compat.rs` removes unused numeric Optional
+helpers and their eager native class caches. Those platform classes do not exist
+on API 23; ordinary bytecode desugaring cannot fix native `FindClass` strings.
+
 
 The JVM JAR contains the native library built for the current host. CI combines
 Linux x86_64/aarch64, macOS x86_64/aarch64, and Windows x86_64 libraries into one JAR.
