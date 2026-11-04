@@ -1,204 +1,243 @@
-name: Build
+name: Check
 
 on:
   push:
     branches: ['**']
-    tags: ['v*']
   pull_request:
+  schedule:
+    - cron: '23 5 * * 1'
   workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-check-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+env:
+  CARGO_TERM_COLOR: always
+  ANDROID_NDK_VERSION: '30.0.16248370'
 
 jobs:
-  # ---------- Native builds ----------
-
   android-native:
-    name: android/${{ matrix.abi }}
-    runs-on: ubuntu-latest
+    name: Android / ${{ matrix.abi }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - abi: armeabi-v7a
-            target: armv7-linux-androideabi
-            cc: armv7a-linux-androideabi16-clang
-          - abi: arm64-v8a
-            target: aarch64-linux-android
-            cc: aarch64-linux-android21-clang
-          - abi: x86
-            target: i686-linux-android
-            cc: i686-linux-android16-clang
-          - abi: x86_64
-            target: x86_64-linux-android
-            cc: x86_64-linux-android21-clang
+        abi: [armeabi-v7a, arm64-v8a, x86, x86_64]
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          target: ${{ matrix.target }}
-          cache-key: android-${{ matrix.target }}
-          rustflags: ""
+          persist-credentials: false
 
-      - name: Install pinned Android NDK
-        run: echo y | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "ndk;21.3.6528147"
-
-      - name: Put NDK toolchain on PATH
-        run: echo "$ANDROID_HOME/ndk/21.3.6528147/toolchains/llvm/prebuilt/linux-x86_64/bin" >> $GITHUB_PATH
-
-      - name: Build
-        env:
-          CC: ${{ matrix.cc }}
-        run: |
-          triple_upper=$(echo "${{ matrix.target }}" | tr 'a-z-' 'A-Z_')
-          export "CARGO_TARGET_${triple_upper}_LINKER=${{ matrix.cc }}"
-          mkdir -p "$RUNNER_TEMP/libunwind-stub"
-          printf '!<arch>\n' > "$RUNNER_TEMP/libunwind-stub/libunwind.a"
-          export RUSTFLAGS="-L $RUNNER_TEMP/libunwind-stub -C link-arg=-Wl,-z,max-page-size=16384"
-          cargo build --target ${{ matrix.target }} --release
-
-      - name: Upload native lib
-        uses: actions/upload-artifact@v4
-        with:
-          name: android-${{ matrix.abi }}
-          path: target/${{ matrix.target }}/release/libetebase_jni.so
-          if-no-files-found: error
-
-      - name: Upload generated Java (once)
-        if: matrix.abi == 'arm64-v8a'
-        uses: actions/upload-artifact@v4
-        with:
-          name: android-generated-java
-          path: client/src/main/java/com/etebase/client/*.java
-          if-no-files-found: error
-
-  desktop-native:
-    name: desktop/${{ matrix.subdir }}
-    runs-on: ${{ matrix.runner }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - runner: macos-latest
-            subdir: macos-aarch64
-            target: aarch64-apple-darwin
-            libfile: libetebase_jni.dylib
-          - runner: macos-latest
-            subdir: macos-x86_64
-            target: x86_64-apple-darwin
-            libfile: libetebase_jni.dylib
-          - runner: ubuntu-22.04
-            subdir: linux-x86_64
-            target: x86_64-unknown-linux-gnu
-            libfile: libetebase_jni.so
-          - runner: ubuntu-22.04-arm
-            subdir: linux-aarch64
-            target: aarch64-unknown-linux-gnu
-            libfile: libetebase_jni.so
-          - runner: windows-latest
-            subdir: windows-x86_64
-            target: x86_64-pc-windows-msvc
-            libfile: etebase_jni.dll
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          target: ${{ matrix.target }}
-          cache-key: desktop-${{ matrix.target }}
-          rustflags: ""
-
-      - name: Build
-        shell: bash
-        run: cargo build --target ${{ matrix.target }} --release --no-default-features --features jvm
-
-      - name: Upload native lib
-        uses: actions/upload-artifact@v4
-        with:
-          name: desktop-${{ matrix.subdir }}
-          path: target/${{ matrix.target }}/release/${{ matrix.libfile }}
-          if-no-files-found: error
-
-      - name: Upload generated Java (once)
-        if: matrix.subdir == 'linux-x86_64'
-        uses: actions/upload-artifact@v4
-        with:
-          name: desktop-generated-java
-          path: client-jvm/src/main/java/com/etebase/client/*.java
-          if-no-files-found: error
-
-  # ---------- Assembly ----------
-
-  assemble-android:
-    name: Assemble AAR
-    needs: android-native
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           distribution: temurin
-          java-version: '11'
+          java-version: '25'
 
-      - name: Install pinned Android NDK
-        run: echo y | JAVA_HOME="$JAVA_HOME_17_X64" $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "ndk;21.3.6528147"
-
-      - name: Download native libs
-        uses: actions/download-artifact@v4
-        with:
-          pattern: android-*
-          path: artifacts/
-
-      - name: Stage jniLibs and generated Java
+      - name: Install native build prerequisites
         run: |
-          for abi in armeabi-v7a arm64-v8a x86 x86_64; do
-            mkdir -p client/src/main/jniLibs/$abi
-            cp artifacts/android-$abi/libetebase_jni.so client/src/main/jniLibs/$abi/
-          done
-          mkdir -p client/src/main/java/com/etebase/client
-          cp artifacts/android-generated-java/*.java client/src/main/java/com/etebase/client/
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y build-essential pkg-config
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;$ANDROID_NDK_VERSION"
 
-      - name: Assemble AAR
-        run: ./gradlew :client:assembleRelease --no-daemon
+      - name: Install repository-pinned Rust toolchain
+        run: rustup show active-toolchain
 
-      - name: Upload AAR
-        uses: actions/upload-artifact@v4
+      - name: Build locked JNI library and verify 16 KB ELF alignment
+        env:
+          ABI: ${{ matrix.abi }}
+        run: ./build.sh android "$ABI"
+
+      - name: Keep native library
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: android-native-${{ matrix.abi }}
+          path: client/build/generated/jniLibs/
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Keep generated Android Java
+        if: matrix.abi == 'arm64-v8a'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: android-generated-java
+          path: client/build/generated/sources/etebase/java/
+          if-no-files-found: error
+          retention-days: 7
+
+  desktop-native:
+    name: JVM / ${{ matrix.platform }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            platform: macos-aarch64
+            target: aarch64-apple-darwin
+          - runner: macos-15-intel
+            platform: macos-x86_64
+            target: x86_64-apple-darwin
+          - runner: ubuntu-24.04
+            platform: linux-x86_64
+            target: x86_64-unknown-linux-gnu
+          - runner: ubuntu-24.04-arm
+            platform: linux-aarch64
+            target: aarch64-unknown-linux-gnu
+          - runner: windows-2025
+            platform: windows-x86_64
+            target: x86_64-pc-windows-msvc
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: '25'
+
+      - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+        with:
+          cache-read-only: ${{ github.event_name == 'pull_request' }}
+
+      - name: Install Linux native prerequisites
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y build-essential pkg-config
+
+      - name: Install repository-pinned Rust toolchain
+        run: rustup show active-toolchain
+
+      - name: Build locked desktop JNI library
+        env:
+          RUST_TARGET: ${{ matrix.target }}
+        run: ./build.sh jvm "$RUST_TARGET"
+
+      - name: Run Java tests against this host's real JNI library
+        run: ./gradlew -PjvmOnly -PetebaseNativePrebuilt=true :client-jvm:test :client-jvm:jar --no-daemon
+
+      - name: Keep native library
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: desktop-native-${{ matrix.platform }}
+          path: client-jvm/build/generated/resources/
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Keep generated JVM Java
+        if: matrix.platform == 'linux-x86_64'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: desktop-generated-java
+          path: client-jvm/build/generated/sources/etebase/java/
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Keep JVM test reports
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: jvm-reports-${{ matrix.platform }}
+          path: client-jvm/build/reports/tests/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  assemble-android:
+    name: Assemble and lint four-ABI AAR
+    needs: android-native
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: '25'
+
+      - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+        with:
+          cache-read-only: ${{ github.event_name == 'pull_request' }}
+
+      - name: Install pinned Android SDK and NDK
+        run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-37.0" "build-tools;37.0.0" "ndk;$ANDROID_NDK_VERSION"'
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: android-native-*
+          path: client/build/generated/jniLibs/
+          merge-multiple: true
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: android-generated-java
+          path: client/build/generated/sources/etebase/java/
+
+      - name: Assemble and lint without rebuilding downloaded native inputs
+        run: ./gradlew -PetebaseNativePrebuilt=true :client:assembleRelease :client:lintRelease --no-daemon
+
+      - name: Keep Android reports
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: android-reports
+          path: client/build/reports/
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: etebase-client-aar
-          path: client/build/outputs/aar/*.aar
+          path: client/build/outputs/aar/client-release.aar
           if-no-files-found: error
 
   assemble-jvm:
-    name: Assemble JAR
+    name: Assemble and test five-platform JVM JAR
     needs: desktop-native
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           distribution: temurin
-          java-version: '11'
+          java-version: '25'
 
-      - name: Download native libs
-        uses: actions/download-artifact@v4
+      - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
         with:
-          pattern: desktop-*
-          path: artifacts/
+          cache-read-only: ${{ github.event_name == 'pull_request' }}
 
-      - name: Stage native libs and generated Java
-        run: |
-          for subdir in macos-aarch64 macos-x86_64 linux-x86_64 linux-aarch64 windows-x86_64; do
-            mkdir -p client-jvm/src/main/resources/com/etebase/client/native/$subdir
-            cp artifacts/desktop-$subdir/* client-jvm/src/main/resources/com/etebase/client/native/$subdir/
-          done
-          mkdir -p client-jvm/src/main/java/com/etebase/client
-          cp artifacts/desktop-generated-java/*.java client-jvm/src/main/java/com/etebase/client/
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: desktop-native-*
+          path: client-jvm/build/generated/resources/
+          merge-multiple: true
 
-      - name: Assemble JAR
-        run: ./gradlew :client-jvm:assemble --no-daemon
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: desktop-generated-java
+          path: client-jvm/build/generated/sources/etebase/java/
 
-      - name: Upload JAR
-        uses: actions/upload-artifact@v4
+      - name: Assemble and test without rebuilding downloaded native inputs
+        run: ./gradlew -PjvmOnly -PetebaseNativePrebuilt=true :client-jvm:test :client-jvm:jar --no-daemon
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: etebase-client-jvm-jar
           path: client-jvm/build/libs/*.jar

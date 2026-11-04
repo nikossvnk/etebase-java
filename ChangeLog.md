@@ -1,5 +1,13 @@
 # Changelog
 
+## Version 2.4.0
+* Build against maintained etebase-rs and upstream flapigen, including the repeated-chunk fix.
+* Upgrade Gradle, Android tooling, Rust and Java dependencies; require Android API 23 or newer.
+* Generate bindings and native libraries during Gradle builds, with locked Cargo dependencies and verified 16 KB Android ELF alignment.
+* Package host-native desktop libraries in the JVM JAR and validate JNI Unicode, nullable metadata, timestamp and exception boundaries.
+* Rename Collection/Item tombstone operations to markDeleted(); generated delete() releases native handles. Migrate all callers before upgrading.
+* Replace private-session Android test fixtures with isolated users on a configurable disposable server; add weekly dependency/build checks.
+
 ## Version 2.3.2
 * Fix crash for Android devices older than Android 7 due to flapigen issue
 

@@ -48,9 +48,6 @@ use crate::{
     FetchOptions,
 };
 
-#[cfg(feature = "java")]
-use crate::jni_c_header::*;
-
 #[cfg(any(feature = "android", feature = "jvm"))]
 use jni_sys::*;
 
@@ -81,12 +78,15 @@ foreign_class!(class Utils {
     fn to_base64(bytes: &[u8]) -> Result<String>; alias toBase64;
     fn randombytes(size: usize) -> Vec<u8>; alias randomBytes;
     fn pretty_fingerprint(content: &[u8]) -> String; alias prettyFingerprint;
+    foreign_code r#"
+    static { com.etebase.client.internal.NativeLoader.load(); }
+"#;
 });
 
 foreign_class!(class Client {
     self_type Client;
     private constructor = empty;
-    fn client_new_with_impl(server_url: Option<&str>, imp: Box<HttpClient>) -> Result<Client>;
+    fn client_new_with_impl(server_url: Option<&str>, imp: Box<dyn HttpClient>) -> Result<Client>;
     fn Client::set_server_url(&mut self, server_url: &str) -> Result<()>; alias setServerUrl;
     fn getDefaultServerUrl() -> &str {
         etebase::DEFAULT_SERVER_URL
@@ -114,6 +114,9 @@ foreign_class!(class User {
         this.set_email(email);
     }
     fn User::email(&self) -> &str; alias getEmail;
+    foreign_code r#"
+    static { com.etebase.client.internal.NativeLoader.load(); }
+"#;
 });
 
 foreign_class!(class Account {
@@ -121,7 +124,7 @@ foreign_class!(class Account {
     private constructor = empty;
     fn isEtebaseServer(client: &Client) -> Result<()> {
         // JNI can't do exceptions when returning bool so throw on error
-        match Account::is_etebase_server(client) {
+        match client.is_server_valid() {
             Ok(true) => Ok(()),
             Ok(false) => Err(Error::NotFound("Not an Etebase server".to_string())),
             Err(err) => Err(err),
@@ -211,6 +214,8 @@ foreign_class!(class FetchOptions {
     private fn FetchOptions::stoken(&mut self, stoken: Option<&str>); alias _stoken;
 
     foreign_code r#"
+    static { com.etebase.client.internal.NativeLoader.load(); }
+
     public final FetchOptions limit(long limit) {
         this._limit(limit);
         return this;
@@ -282,6 +287,9 @@ foreign_class!(class ItemMetadata {
     fn ItemMetadataFixes::getMtime(&mut self) -> NullableI64;
     fn ItemMetadata::description(&self) -> Option<&str>; alias getDescription;
     fn ItemMetadata::color(&self) -> Option<&str>; alias getColor;
+    foreign_code r#"
+    static { com.etebase.client.internal.NativeLoader.load(); }
+"#;
 });
 
 pub fn col_fetch(mgr: &CollectionManager, col_uid: &str, fetch_options: Option<&FetchOptions>) -> Result<Collection> {
@@ -472,7 +480,7 @@ foreign_class!(class Collection {
     fn Collection::meta_raw(&self) -> Result<Vec<u8>>; alias getMetaRaw;
     fn Collection::set_content(&mut self, content: &[u8]) -> Result<()>; alias setContent;
     fn Collection::content(&self) -> Result<Vec<u8>>; alias getContent;
-    fn Collection::delete(&mut self) -> Result<()>;
+    fn Collection::delete(&mut self) -> Result<()>; alias markDeleted;
     fn Collection::is_deleted(&self) -> bool; alias isDeleted;
     fn Collection::uid(&self) -> &str; alias getUid;
     fn Collection::etag(&self) -> &str; alias getEtag;
@@ -507,7 +515,7 @@ foreign_class!(class Item {
     fn Item::meta_raw(&self) -> Result<Vec<u8>>; alias getMetaRaw;
     fn Item::set_content(&mut self, content: &[u8]) -> Result<()>; alias setContent;
     fn Item::content(&self) -> Result<Vec<u8>>; alias getContent;
-    fn Item::delete(&mut self) -> Result<()>;
+    fn Item::delete(&mut self) -> Result<()>; alias markDeleted;
     fn Item::is_deleted(&self) -> bool; alias isDeleted;
     fn Item::is_missing_content(&self) -> bool; alias isMissingContent;
     fn Item::uid(&self) -> &str; alias getUid;
@@ -587,8 +595,8 @@ foreign_class!(class SignedInvitation {
     fn SignedInvitation::username(&self) -> &str; alias getUsername;
     fn SignedInvitation::collection(&self) -> &str; alias getCollection;
     fn SignedInvitation::access_level(&self) -> CollectionAccessLevel; alias getAccessLevel;
-    fn SignedInvitation::from_username(&self) -> Option<&str>; alias getFromUsername;
-    fn SignedInvitation::from_pubkey(&self) -> &[u8]; alias getFromPubkey;
+    fn SignedInvitation::sender_username(&self) -> Option<&str>; alias getFromUsername;
+    fn SignedInvitation::sender_pubkey(&self) -> &[u8]; alias getFromPubkey;
 });
 
 foreign_class!(class CollectionMember {

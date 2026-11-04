@@ -6,8 +6,8 @@ fn main() {
 
     let android = env::var_os("CARGO_FEATURE_ANDROID").is_some();
     let jvm = env::var_os("CARGO_FEATURE_JVM").is_some();
-    if android && jvm {
-        panic!("The `android` and `jvm` features are mutually exclusive");
+    if android == jvm {
+        panic!("Enable exactly one of the `android` and `jvm` features");
     }
 
     let out_dir = env::var("OUT_DIR").unwrap();
@@ -21,12 +21,17 @@ fn main() {
     };
 
     let java_out = java_module
-        .join("src")
-        .join("main")
+        .join("build")
+        .join("generated")
+        .join("sources")
+        .join("etebase")
         .join("java")
         .join("com")
         .join("etebase")
         .join("client");
+    std::fs::create_dir_all(&java_out).expect("create generated Java source directory");
+    // Gradle clean removes these files without clearing Cargo's build cache.
+    println!("cargo:rerun-if-changed={}", java_out.join("Utils.java").display());
 
     let swig_gen = flapigen::Generator::new(LanguageConfig::JavaConfig(
         JavaConfig::new(java_out, "com.etebase.client".into())
@@ -36,5 +41,7 @@ fn main() {
     .remove_not_generated_files_from_output_directory(true)
     .rustfmt_bindings(true);
     swig_gen.expand("etebase jni bindings", &in_src, &out_src);
+    println!("cargo:rerun-if-changed=src/jni_typemaps.rs");
+    println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed={}", in_src.display());
 }

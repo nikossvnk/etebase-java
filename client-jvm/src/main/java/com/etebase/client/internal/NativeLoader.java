@@ -12,22 +12,28 @@ public final class NativeLoader {
     private static final String OVERRIDE_PROPERTY = "com.etebase.client.native.path";
 
     private static final Object LOCK = new Object();
-    private static volatile boolean loaded = false;
+    private static boolean loaded = false;
 
     private NativeLoader() {
     }
 
     public static void load() {
-        if (loaded) return;
         synchronized (LOCK) {
             if (loaded) return;
-            String override = System.getProperty(OVERRIDE_PROPERTY);
-            if (override != null && !override.isEmpty()) {
-                System.load(override);
-            } else {
-                loadFromClasspath();
-            }
+            // JNI_OnLoad resolves other binding classes, which can re-enter this loader.
+            // Other threads still wait on LOCK until the native library finishes loading.
             loaded = true;
+            try {
+                String override = System.getProperty(OVERRIDE_PROPERTY);
+                if (override != null && !override.isEmpty()) {
+                    System.load(override);
+                } else {
+                    loadFromClasspath();
+                }
+            } catch (RuntimeException | LinkageError e) {
+                loaded = false;
+                throw e;
+            }
         }
     }
 

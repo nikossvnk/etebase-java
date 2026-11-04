@@ -1,2 +1,19 @@
-include ':client', ':client-jvm'
-rootProject.name = "Etebase Library"
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+dependencyResolutionManagement {
+    repositoriesMode = RepositoriesMode.FAIL_ON_PROJECT_REPOS
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+rootProject.name = 'etebase-java'
+include ':client-jvm'
+if (!providers.gradleProperty('jvmOnly').isPresent()) {
+    include ':client'
+}

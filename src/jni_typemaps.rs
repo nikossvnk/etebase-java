@@ -38,7 +38,7 @@ foreign_typemap!(
 foreign_typemap!(
     ($p:r_type) Option<&str> => internal_aliases::JStringOptStr {
         $out = match $p {
-            Some(s) => from_std_string_jstring(s.to_owned(), env),
+            Some(s) => from_std_str_jstring(s, env),
             None => ::std::ptr::null_mut(),
         };
     };
@@ -94,7 +94,7 @@ foreign_typemap!(
 foreign_typemap!(
     ($p:r_type) NullableString => internal_aliases::JStringOptStr {
         $out = match $p {
-            Some(s) => from_std_string_jstring(s, env),
+            Some(s) => from_std_str_jstring(&s, env),
             None => ::std::ptr::null_mut(),
         };
     };
@@ -105,7 +105,7 @@ foreign_typemap!(
 foreign_typemap!(
     ($p:r_type) CallbackOption<&str> => internal_aliases::JStringOptStr {
         $out = match $p {
-            Some(s) => from_std_string_jstring(s.to_owned(), env),
+            Some(s) => from_std_str_jstring(s, env),
             None => ::std::ptr::null_mut(),
         };
     };
@@ -217,8 +217,9 @@ fn jstring_array_to_vec_of_strings(env: *mut JNIEnv, arr: jobjectArray) -> Vec<S
             if (**env).ExceptionCheck.unwrap()(env) != 0 {
                 panic!("Failed to retrieve element {} from this `jobjectArray'", i);
             }
-            let jstr = JavaString::new(env, obj);
-            jstr.to_str().to_string()
+            let value = from_jstring_std_string(obj, env);
+            (**env).DeleteLocalRef.unwrap()(env, obj);
+            value
         };
         result.push(native);
     }
@@ -226,9 +227,9 @@ fn jstring_array_to_vec_of_strings(env: *mut JNIEnv, arr: jobjectArray) -> Vec<S
     result
 }
 
-#[swig_from_foreigner_hint = "java.lang.String []"]
-impl SwigFrom<jobjectArray> for Vec<String> {
-    fn swig_from(x: jobjectArray, env: *mut JNIEnv) -> Self {
-        jstring_array_to_vec_of_strings(env, x)
-    }
-}
+foreign_typemap!(
+    ($p:r_type) Vec<String> <= jobjectArray {
+        $out = jstring_array_to_vec_of_strings(env, $p);
+    };
+    ($p:f_type) <= "String []";
+);
