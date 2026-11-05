@@ -19,8 +19,10 @@ if [[ "$mode" == jvm ]]; then
         x86_64-pc-windows-msvc) prefix=win32-x86-64; library=etebase_uniffi.dll ;;
         *) echo "Unsupported desktop target: $target" >&2; exit 2 ;;
     esac
-    # JNA loads native libraries from <os>-<arch>/ classpath resources.
+    # JNA loads native libraries from <os>-<arch>/ classpath resources. Replace the whole
+    # platform directory so libraries from older builds are never packaged.
     destination="client-jvm/build/generated/resources/$prefix"
+    rm -rf -- "$destination"
     mkdir -p "$destination"
     cp "target/$target/release/$library" "$destination/$library"
     exit
@@ -54,6 +56,8 @@ for spec in 'armeabi-v7a armv7-linux-androideabi armv7a-linux-androideabi' 'arm6
     "$tools/llvm-readelf" -lW "$library" | awk '
         $1 == "LOAD" { found = 1; if ($NF != "0x4000" && $NF != "0x10000") bad = 1 }
         END { exit (!found || bad) }'
+    # Replace the whole ABI directory so libraries from older builds are never packaged.
+    rm -rf -- "client/build/generated/jniLibs/$abi"
     mkdir -p "client/build/generated/jniLibs/$abi"
     cp "$library" "client/build/generated/jniLibs/$abi/libetebase_uniffi.so"
 done
