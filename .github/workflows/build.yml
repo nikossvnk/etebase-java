@@ -23,7 +23,7 @@ env:
 jobs:
   android-native:
     name: Android / ${{ matrix.abi }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 45
     strategy:
       fail-fast: false
@@ -87,10 +87,10 @@ jobs:
           - runner: macos-15-intel
             platform: macos-x86_64
             target: x86_64-apple-darwin
-          - runner: ubuntu-24.04
+          - runner: ubuntu-26.04
             platform: linux-x86_64
             target: x86_64-unknown-linux-gnu
-          - runner: ubuntu-24.04-arm
+          - runner: ubuntu-26.04-arm
             platform: linux-aarch64
             target: aarch64-unknown-linux-gnu
           - runner: windows-2025
@@ -156,7 +156,7 @@ jobs:
   assemble-android:
     name: Assemble and lint four-ABI AAR
     needs: android-native
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -207,7 +207,7 @@ jobs:
   assemble-jvm:
     name: Assemble and test five-platform JVM JAR
     needs: desktop-native
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
