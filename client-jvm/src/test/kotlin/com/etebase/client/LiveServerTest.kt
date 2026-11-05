@@ -31,7 +31,7 @@ class LiveServerTest {
     @Before
     fun signUp() {
         assumeTrue("Set -PetebaseServerUrl to run live server tests", serverUrl != null)
-        client = createClient(http, serverUrl)
+        client = createClient(http, serverUrl!!)
         assertTrue(isEtebaseServer(client))
         username = "jvm-" + UUID.randomUUID()
         account = Account.signup(client, User(username, "$username@example.com"), PASSWORD)

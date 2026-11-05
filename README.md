@@ -4,7 +4,7 @@ Rust-backed Kotlin bindings for Etebase end-to-end encrypted synchronization, ge
 with [UniFFI](https://mozilla.github.io/uniffi-rs/) and loaded through
 [JNA](https://github.com/java-native-access/jna). This maintained fork builds the Android
 AAR (`client`) and desktop JVM JAR (`client-jvm`) from source; it does not claim that its
-version is published to Maven Central. API documentation: <https://docs.etebase.com>.
+version is published to Maven Central. Protocol and library documentation: [etebase-rs](https://github.com/nikossvnk/etebase-rs).
 
 ## Usage
 

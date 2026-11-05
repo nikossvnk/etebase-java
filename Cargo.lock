@@ -300,7 +300,7 @@ dependencies = [
 [[package]]
 name = "etebase"
 version = "0.6.1"
-source = "git+https://github.com/nikossvnk/etebase-rs?rev=eee354b5af21243f93c3f45f70baa98232d713b4#eee354b5af21243f93c3f45f70baa98232d713b4"
+source = "git+https://github.com/nikossvnk/etebase-rs?rev=1c775db4708d18b200d288cf268be07476678531#1c775db4708d18b200d288cf268be07476678531"
 dependencies = [
  "libsodium-rs",
  "remove_dir_all",

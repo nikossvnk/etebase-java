@@ -1,7 +1,7 @@
 [package]
 name = "etebase-uniffi"
 description = "UniFFI Kotlin bindings to etebase-rs (Android and desktop JVM)"
-homepage = "https://www.etebase.com"
+homepage = "https://github.com/nikossvnk/etebase-java"
 repository = "https://github.com/nikossvnk/etebase-java"
 version = "3.0.0"
 authors = ["Tom Hacohen <tom@stosb.com>"]
@@ -16,7 +16,7 @@ crate-type = ["cdylib", "lib"]
 
 [dependencies]
 uniffi = "0.32.2"
-etebase = { git = "https://github.com/nikossvnk/etebase-rs", rev = "eee354b5af21243f93c3f45f70baa98232d713b4", default-features = false }
+etebase = { git = "https://github.com/nikossvnk/etebase-rs", rev = "1c775db4708d18b200d288cf268be07476678531", default-features = false }
 
 [workspace]
 members = [".", "uniffi-bindgen"]

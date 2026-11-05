@@ -82,7 +82,6 @@ class NativeBindingsTest {
     @Test
     fun utilitiesCallIntoNative() {
         assertEquals(32, randomBytes(32u).size)
-        assertEquals("https://api.etebase.com/", defaultServerUrl())
         assertTrue(prettyFingerprint(randomBytes(32u)).isNotBlank())
     }
 

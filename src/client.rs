@@ -126,12 +126,11 @@ impl Client {
 
 #[uniffi::export]
 impl Client {
-    /// Connects to `serverUrl` (the default Etebase server when null) through `httpClient`.
+    /// Connects to `serverUrl` through `httpClient`.
     #[uniffi::constructor]
-    pub fn new(server_url: Option<String>, http_client: Arc<dyn HttpClient>) -> Result<Arc<Self>> {
-        let server_url = server_url.as_deref().unwrap_or(etebase::DEFAULT_SERVER_URL);
+    pub fn new(server_url: String, http_client: Arc<dyn HttpClient>) -> Result<Arc<Self>> {
         let inner =
-            etebase::Client::new_with_impl(server_url, Box::new(ForeignHttpClient(http_client)))?;
+            etebase::Client::new_with_impl(&server_url, Box::new(ForeignHttpClient(http_client)))?;
         Ok(Arc::new(Self {
             inner: Mutex::new(inner),
         }))

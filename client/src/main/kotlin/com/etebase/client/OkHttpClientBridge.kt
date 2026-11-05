@@ -52,6 +52,6 @@ class OkHttpClientBridge(private val client: OkHttpClient) : HttpClient {
     }
 }
 
-/** Creates a [Client] for [serverUrl] (the default Etebase server when null) using [okHttpClient]. */
-fun createClient(okHttpClient: OkHttpClient, serverUrl: String?): Client =
+/** Creates a [Client] for [serverUrl] using [okHttpClient]. */
+fun createClient(okHttpClient: OkHttpClient, serverUrl: String): Client =
     Client(serverUrl, OkHttpClientBridge(okHttpClient))

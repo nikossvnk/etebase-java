@@ -60,9 +60,3 @@ pub fn random_bytes(size: u32) -> Vec<u8> {
 pub fn pretty_fingerprint(content: Vec<u8>) -> String {
     etebase::pretty_fingerprint(&content)
 }
-
-/// The URL of the official Etebase server.
-#[uniffi::export]
-pub fn default_server_url() -> String {
-    etebase::DEFAULT_SERVER_URL.to_owned()
-}
