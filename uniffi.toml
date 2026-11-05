@@ -1,0 +1,7 @@
+# Kotlin bindings for the desktop JVM (client-jvm). The Android build (client) overrides
+# `android` through uniffi-android.toml.
+[bindings.kotlin]
+package_name = "com.etebase.client"
+cdylib_name = "etebase_uniffi"
+android = false
+generate_immutable_records = true

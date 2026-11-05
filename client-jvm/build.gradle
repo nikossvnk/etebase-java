@@ -1,4 +1,5 @@
 plugins {
+    id 'org.jetbrains.kotlin.jvm'
     id 'java-library'
     id 'maven-publish'
 }
@@ -7,40 +8,92 @@ java {
     targetCompatibility = JavaVersion.VERSION_17
     withSourcesJar()
 }
+kotlin {
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
+    }
+}
 final nativeRoot = projectDir.parentFile
 final nativePrebuilt = providers.gradleProperty('etebaseNativePrebuilt').map { it.toBoolean() }.getOrElse(false)
+final cargoInputs = ['Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml', 'build.sh'].collect { new File(nativeRoot, it) }
+final resourcesDir = layout.buildDirectory.dir('generated/resources')
+final bindingsDir = layout.buildDirectory.dir('generated/source/uniffi/kotlin')
+
 final buildNative = tasks.register('buildNative', Exec) {
     workingDir nativeRoot
     commandLine 'bash', new File(nativeRoot, 'build.sh').absolutePath, 'jvm'
-    inputs.files(new File(nativeRoot, 'Cargo.toml'), new File(nativeRoot, 'Cargo.lock'),
-            new File(nativeRoot, 'build.rs'), new File(nativeRoot, 'build.sh'),
-            new File(nativeRoot, 'rust-toolchain.toml'))
+    inputs.files(cargoInputs)
     inputs.dir(new File(nativeRoot, 'src'))
-    outputs.dir(layout.buildDirectory.dir('generated/sources/etebase/java'))
-    outputs.dir(layout.buildDirectory.dir('generated/resources'))
+    outputs.dir(resourcesDir)
     onlyIf { !nativePrebuilt }
 }
-final copySharedJavaSources = tasks.register('copySharedJavaSources', Copy) {
-    from('../client/src/main/java') {
-        include 'com/etebase/client/exceptions/**'
-        include 'com/etebase/client/http_bridge/**'
+
+/** `cargo run -p uniffi-bindgen` arguments for the first of [libraries] that exists. */
+class UniffiBindgenArguments implements CommandLineArgumentProvider {
+    private final List<File> libraries
+    private final List<String> options
+
+    UniffiBindgenArguments(List<File> libraries, List<String> options) {
+        this.libraries = libraries
+        this.options = options
     }
-    into layout.buildDirectory.dir('generated-src/shared/java')
+
+    @Override
+    Iterable<String> asArguments() {
+        final library = libraries.find { it.isFile() }
+        if (library == null) {
+            throw new GradleException("No native library built; expected one of $libraries")
+        }
+        ['run', '--locked', '--quiet', '-p', 'uniffi-bindgen', '--', 'generate',
+         '--library', library.absolutePath, '--language', 'kotlin', '--no-format'] + options
+    }
 }
+
+// JNA resource directories (<os>-<arch>) of the packaged libraries; this host's first.
+final jnaPlatforms = ['linux-x86-64', 'linux-aarch64', 'darwin-aarch64', 'darwin-x86-64', 'win32-x86-64']
+final hostOs = System.getProperty('os.name').toLowerCase(Locale.ROOT).with {
+    it.startsWith('mac') ? 'darwin' : it.startsWith('windows') ? 'win32' : it
+}
+final hostArch = System.getProperty('os.arch').with { it in ['amd64', 'x86_64'] ? 'x86-64' : it }
+
+// Kotlin bindings are generated from a native library packaged in this JAR (this host's when
+// present), including prebuilt libraries (-PetebaseNativePrebuilt=true), so both always match.
+final generateBindings = tasks.register('generateUniffiBindings', Exec) {
+    dependsOn buildNative
+    final outDir = bindingsDir.get().asFile
+    final libraries = (["$hostOs-$hostArch".toString()] + jnaPlatforms).collectMany { platform ->
+        ['libetebase_uniffi.so', 'libetebase_uniffi.dylib', 'etebase_uniffi.dll'].collect {
+            new File(resourcesDir.get().asFile, "$platform/$it")
+        }
+    }
+    workingDir nativeRoot
+    executable 'cargo'
+    argumentProviders.add(new UniffiBindgenArguments(libraries, ['--out-dir', outDir.absolutePath]))
+    inputs.files(cargoInputs)
+    inputs.file(new File(nativeRoot, 'uniffi.toml'))
+    inputs.dir(new File(nativeRoot, 'uniffi-bindgen'))
+    inputs.dir(resourcesDir)
+    outputs.dir(bindingsDir)
+    doFirst { outDir.deleteDir() }
+}
+
 sourceSets.main {
-    java.setSrcDirs(['src/main/java/com/etebase/client/annotation',
-                     'src/main/java/com/etebase/client/internal',
-                     'build/generated/sources/etebase/java'])
-    java.srcDir copySharedJavaSources
-    resources.setSrcDirs(['build/generated/resources'])
+    java.setSrcDirs([])
+    // The OkHttp HttpClient implementation is shared with the Android library.
+    kotlin.setSrcDirs([generateBindings.map { bindingsDir.get() }, '../client/src/main/kotlin'])
+    resources.setSrcDirs([buildNative.map { resourcesDir.get() }])
 }
-tasks.named('compileJava').configure { dependsOn buildNative }
-tasks.named('processResources').configure { dependsOn buildNative }
-tasks.named('sourcesJar').configure { dependsOn buildNative, copySharedJavaSources }
 tasks.withType(Test).configureEach {
-    systemProperty 'etebase.test.classpath', sourceSets.main.runtimeClasspath.asPath
+    // JNA uses JNI; recent JDKs warn unless native access is granted explicitly.
+    jvmArgs '--enable-native-access=ALL-UNNAMED'
+    final serverUrl = providers.gradleProperty('etebaseServerUrl')
+    if (serverUrl.isPresent()) {
+        systemProperty 'etebase.serverUrl', serverUrl.get()
+    }
+    systemProperty 'etebase.bindingsDir', bindingsDir.get().asFile.absolutePath
 }
 dependencies {
+    implementation 'net.java.dev.jna:jna:5.19.1'
     api 'com.squareup.okhttp3:okhttp:5.5.1'
     testImplementation 'junit:junit:4.13.2'
 }

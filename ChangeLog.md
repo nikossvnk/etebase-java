@@ -1,5 +1,18 @@
 # Changelog
 
+## Version 3.0.0
+Breaking: the bindings are rewritten with Mozilla UniFFI 0.32 and are now Kotlin over JNA. Migrate all callers.
+* Native memory is released by a `Cleaner` (Android: `SystemCleaner` on API 34+, JNA's cleaner below) instead of `finalize()`; objects are `AutoCloseable`. The manual `delete()` handle release is replaced by `close()`.
+* Native library renamed to `libetebase_uniffi`; the JVM JAR stores it as a JNA resource (`<os>-<arch>/`). JNA 5.19.1 is a new runtime dependency (`net.java.dev.jna:jna:5.19.1@aar` on Android). The `NativeLoader`s and `com.etebase.client.native.path` are gone; use `uniffi.component.etebase_uniffi.libraryOverride`.
+* Errors: `EtebaseException` is a sealed class with one subclass per Etebase error (`EtebaseException.Unauthorized`, `.Conflict`, `.Connection`, …, and `.ProgrammingException`, `.TemporaryServerException`, `.ServerException`); `com.etebase.client.exceptions.*` is removed. Rust panics surface as `InternalException` instead of aborting.
+* `Client.create(okHttpClient, url)` becomes `createClient(okHttpClient, url)` (`OkHttpClientBridge`); custom transports implement the `HttpClient` interface returning `HttpResponse` and throw on failure, replacing `HttpClientBridge` and `Response`.
+* Accessors drop `get`: `uid()`, `etag()`, `meta()`, `content()`, `stoken()`, `accessLevel()`, `collectionType()`, `asItem()`, `collectionManager()`, `invitationManager()`, `itemManager(col)`, `memberManager(col)`, `senderUsername()`/`senderPubkey()` (was `getFromUsername`/`getFromPubkey`); `Client.getDefaultServerUrl()` and `Account.isEtebaseServer()` become `defaultServerUrl()` and `isEtebaseServer(client)` (returns a `Boolean`); `Utils.*` become top-level functions.
+* `ItemMetadata`, `FetchOptions`, `CollectionMember`, `RemovedCollection`, `UserProfile` and all list responses are immutable data classes (`FetchOptions(stoken = s, limit = 50u)`); list responses expose `data`, `stoken`/`iterator`, `done` and `removedMemberships` as `List`s.
+* Arrays become `List`s; `CollectionManager.list(String[])` is `listMulti(List<String>)`; `FileSystemCache._unstable_collectionList/_unstable_itemList` are `collectionList`/`itemList`. Optional trailing arguments (`fetchOptions`, `deps`, `encryptionKey`) default to `null`, replacing the Java overloads. The `String` content helpers are removed; use `toByteArray()`/`String(bytes)`.
+* Objects are thread-safe. Passing the same `Item` several times to `batch`, `transaction` or `fetchUpdates` (also as a dependency) is supported, and saved etags update the Kotlin object.
+* Account sessions and `FileSystemCache` data written by 2.x are read unchanged.
+* Build: generated Kotlin comes from the built library through the workspace's `uniffi-bindgen` (Gradle task `generateUniffiBindings`); flapigen, its typemaps and AST post-processing are removed. Narrow R8 consumer rules for JNA and the bindings. CI runs Rust lints and live-server JVM tests.
+
 ## Version 2.4.0
 * Build against maintained etebase-rs and upstream flapigen, including the repeated-chunk fix.
 * Upgrade Gradle, Android tooling, Rust and Java dependencies; require Android API 23 or newer.

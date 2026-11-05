@@ -16,10 +16,4 @@
 
 /.idea/
 
-
 /target
-/client/src/main/jniLibs
-/client/src/main/java/com/etebase/client/*.java
-/client-jvm/src/main/java/com/etebase/client/*.java
-/client-jvm/src/main/resources/com/etebase/client/native
-

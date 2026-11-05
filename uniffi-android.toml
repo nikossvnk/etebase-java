@@ -1,0 +1,4 @@
+# Global uniffi-bindgen config for the Android library (client): Android cleaner selection
+# (SystemCleaner on API 34+, JNA's cleaner below) and androidx annotations.
+[crates.etebase_uniffi.bindings.kotlin]
+android = true

@@ -1,0 +1,15 @@
+[package]
+name = "uniffi-bindgen"
+description = "Generates the Kotlin bindings of etebase-uniffi from its built library"
+version = "3.0.0"
+edition = "2024"
+rust-version = "1.99.1"
+license = "BSD-3-Clause"
+publish = false
+
+[[bin]]
+name = "uniffi-bindgen"
+path = "src/main.rs"
+
+[dependencies]
+uniffi = { version = "0.32.2", features = ["cli"] }

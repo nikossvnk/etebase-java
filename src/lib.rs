@@ -1,162 +1,68 @@
-mod java_glue;
-pub use crate::java_glue::*;
+//! UniFFI bindings of etebase-rs for Kotlin (Android and desktop JVM).
+//!
+//! Objects shared with Kotlin are `Send + Sync`: etebase types that are mutated or not `Sync`
+//! live behind a `Mutex`. Network calls on an object hold its lock, so concurrent calls on the
+//! same object run one after another.
 
-use std::sync::Arc;
-use std::cell::RefCell;
+use std::sync::{Mutex, MutexGuard, PoisonError};
 
-use etebase::{
-    Client,
-    http_custom_client::{
-        ClientImplementation,
-        Response as EtebaseResponse,
-    },
+mod account;
+mod client;
+mod collection;
+mod error;
+mod fs_cache;
+mod item;
+mod types;
 
-    error::{
-        Error,
-        Result,
-    },
+pub use account::Account;
+pub use client::{Client, HttpClient, HttpClientError, HttpResponse, is_etebase_server};
+pub use collection::{
+    Collection, CollectionInvitationManager, CollectionManager, CollectionMemberManager,
+    SignedInvitation,
+};
+pub use error::EtebaseError;
+pub use fs_cache::FileSystemCache;
+pub use item::{Item, ItemManager};
+pub use types::{
+    CollectionAccessLevel, CollectionListResponse, CollectionMember, FetchOptions,
+    InvitationListResponse, ItemListResponse, ItemMetadata, ItemRevisionsListResponse,
+    MemberListResponse, PrefetchOption, RemovedCollection, User, UserProfile,
 };
 
-pub struct Response {
-    inner: Arc<RefCell<EtebaseResponse>>,
+use error::Result;
+
+uniffi::setup_scaffolding!();
+
+/// Locks `mutex`. A panic while it was held was already reported to Kotlin as an
+/// `InternalException`; the etebase value itself stays valid, so later calls may use it.
+pub(crate) fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+    mutex.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
-impl Response {
-    pub fn new() -> Self {
-        Self {
-            inner: Arc::new(RefCell::new(EtebaseResponse::new_err(Error::ProgrammingError("Got a generic response error")))),
-        }
-    }
-
-    pub fn reset_ok(&mut self, bytes: Vec<u8>, status: u16) {
-        self.inner.borrow_mut().reset_ok(bytes, status)
-    }
-
-    pub fn reset_err(&mut self, err: String) {
-        self.inner.borrow_mut().reset_err(Error::Connection(err))
-    }
-
-    pub fn inner_copy(&self) -> Arc<RefCell<EtebaseResponse>> {
-        Arc::clone(&self.inner)
-    }
+#[uniffi::export]
+pub fn from_base64(string: String) -> Result<Vec<u8>> {
+    Ok(etebase::utils::from_base64(&string)?)
 }
 
-pub trait HttpClient {
-    fn get(&self, url: &str, auth_token: Option<&str>, response: Response);
-    fn post(&self, url: &str, auth_token: Option<&str>, body: Vec<u8>, response: Response);
-    fn put(&self, url: &str, auth_token: Option<&str>, body: Vec<u8>, response: Response);
-    fn patch(&self, url: &str, auth_token: Option<&str>, body: Vec<u8>, response: Response);
-    fn delete(&self, url: &str, auth_token: Option<&str>, response: Response);
+#[uniffi::export]
+pub fn to_base64(bytes: Vec<u8>) -> Result<String> {
+    Ok(etebase::utils::to_base64(&bytes)?)
 }
 
-struct JavaHttpClient {
-    imp: Arc<Box<dyn HttpClient>>,
+/// `size` cryptographically secure random bytes.
+#[uniffi::export]
+pub fn random_bytes(size: u32) -> Vec<u8> {
+    etebase::utils::randombytes(size as usize)
 }
 
-impl JavaHttpClient {
-    pub fn new(imp: Box<dyn HttpClient>) -> Self {
-        Self {
-            imp: Arc::new(imp),
-        }
-    }
+/// A human-readable fingerprint of a public key, for out-of-band verification.
+#[uniffi::export]
+pub fn pretty_fingerprint(content: Vec<u8>) -> String {
+    etebase::pretty_fingerprint(&content)
 }
 
-impl ClientImplementation for JavaHttpClient {
-    fn get(&self, url: &str, auth_token: Option<&str>) -> EtebaseResponse {
-        let response = Response::new();
-        let inner = response.inner_copy();
-        self.imp.get(url, auth_token, response);
-        let inner = inner.borrow();
-        inner.clone()
-    }
-
-    fn post(&self, url: &str, auth_token: Option<&str>, body: Vec<u8>) -> EtebaseResponse {
-        let response = Response::new();
-        let inner = response.inner_copy();
-        self.imp.post(url, auth_token, body, response);
-        let inner = inner.borrow();
-        inner.clone()
-    }
-    fn put(&self, url: &str, auth_token: Option<&str>, body: Vec<u8>) -> EtebaseResponse {
-        let response = Response::new();
-        let inner = response.inner_copy();
-        self.imp.put(url, auth_token, body, response);
-        let inner = inner.borrow();
-        inner.clone()
-    }
-    fn patch(&self, url: &str, auth_token: Option<&str>, body: Vec<u8>) -> EtebaseResponse {
-        let response = Response::new();
-        let inner = response.inner_copy();
-        self.imp.patch(url, auth_token, body, response);
-        let inner = inner.borrow();
-        inner.clone()
-    }
-    fn delete(&self, url: &str, auth_token: Option<&str>) -> EtebaseResponse {
-        let response = Response::new();
-        let inner = response.inner_copy();
-        self.imp.delete(url, auth_token, response);
-        let inner = inner.borrow();
-        inner.clone()
-    }
-}
-
-pub fn client_new_with_impl(server_url: Option<&str>, imp: Box<dyn HttpClient>) -> Result<Client> {
-    let imp = Box::new(JavaHttpClient::new(imp));
-    Client::new_with_impl(server_url.unwrap_or(etebase::DEFAULT_SERVER_URL), imp)
-}
-
-pub struct FetchOptions {
-    limit: Option<usize>,
-    stoken: Option<String>,
-    iterator: Option<String>,
-    prefetch: Option<etebase::PrefetchOption>,
-    with_collection: Option<bool>,
-}
-
-impl FetchOptions {
-    pub fn new() -> Self {
-        Self {
-            limit: None,
-            stoken: None,
-            iterator: None,
-            prefetch: None,
-            with_collection: None,
-        }
-    }
-
-    pub fn limit(&mut self, limit: usize) {
-        self.limit = Some(limit);
-    }
-
-    pub fn prefetch(&mut self, prefetch: etebase::PrefetchOption) {
-        self.prefetch = Some(prefetch);
-    }
-
-    pub fn with_collection(&mut self, with_collection: bool) {
-        self.with_collection = Some(with_collection);
-    }
-
-    pub fn iterator(&mut self, iterator: Option<&str>) {
-        self.iterator = iterator.map(str::to_string);
-    }
-
-    pub fn stoken(&mut self, stoken: Option<&str>) {
-        self.stoken = stoken.map(str::to_string);
-    }
-
-    pub fn to_fetch_options<'a>(&'a self) -> etebase::FetchOptions<'a> {
-        let mut ret = etebase::FetchOptions::new();
-        if let Some(limit) = self.limit {
-            ret = ret.limit(limit);
-        }
-        if let Some(prefetch) = &self.prefetch {
-            ret = ret.prefetch(prefetch);
-        }
-        if let Some(with_collection) = self.with_collection {
-            ret = ret.with_collection(with_collection);
-        }
-        ret = ret.iterator(self.iterator.as_deref());
-        ret = ret.stoken(self.stoken.as_deref());
-        ret
-    }
+/// The URL of the official Etebase server.
+#[uniffi::export]
+pub fn default_server_url() -> String {
+    etebase::DEFAULT_SERVER_URL.to_owned()
 }

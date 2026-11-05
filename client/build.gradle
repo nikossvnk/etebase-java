@@ -5,16 +5,58 @@ plugins {
 
 final nativeRoot = projectDir.parentFile
 final nativePrebuilt = providers.gradleProperty('etebaseNativePrebuilt').map { it.toBoolean() }.getOrElse(false)
+final cargoInputs = ['Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml', 'build.sh'].collect { new File(nativeRoot, it) }
+final jniLibsDir = layout.buildDirectory.dir('generated/jniLibs')
+final bindingsDir = layout.buildDirectory.dir('generated/source/uniffi/kotlin')
+
 final buildNative = tasks.register('buildNative', Exec) {
     workingDir nativeRoot
     commandLine 'bash', new File(nativeRoot, 'build.sh').absolutePath, 'android'
-    inputs.files(new File(nativeRoot, 'Cargo.toml'), new File(nativeRoot, 'Cargo.lock'),
-            new File(nativeRoot, 'rust-toolchain.toml'), new File(nativeRoot, 'build.rs'),
-            new File(nativeRoot, 'build.sh'))
+    inputs.files(cargoInputs)
     inputs.dir(new File(nativeRoot, 'src'))
-    outputs.dir(layout.buildDirectory.dir('generated/jniLibs'))
-    outputs.dir(layout.buildDirectory.dir('generated/sources/etebase/java'))
+    outputs.dir(jniLibsDir)
     onlyIf { !nativePrebuilt }
+}
+
+/** `cargo run -p uniffi-bindgen` arguments for the first of [libraries] that exists. */
+class UniffiBindgenArguments implements CommandLineArgumentProvider {
+    private final List<File> libraries
+    private final List<String> options
+
+    UniffiBindgenArguments(List<File> libraries, List<String> options) {
+        this.libraries = libraries
+        this.options = options
+    }
+
+    @Override
+    Iterable<String> asArguments() {
+        final library = libraries.find { it.isFile() }
+        if (library == null) {
+            throw new GradleException("No native library built; expected one of $libraries")
+        }
+        ['run', '--locked', '--quiet', '-p', 'uniffi-bindgen', '--', 'generate',
+         '--library', library.absolutePath, '--language', 'kotlin', '--no-format'] + options
+    }
+}
+
+// Kotlin bindings are generated from a native library packaged in this AAR, including
+// prebuilt libraries (-PetebaseNativePrebuilt=true), so both always match.
+final generateBindings = tasks.register('generateUniffiBindings', Exec) {
+    dependsOn buildNative
+    final outDir = bindingsDir.get().asFile
+    final libraries = ['arm64-v8a', 'x86_64', 'armeabi-v7a', 'x86'].collect {
+        new File(jniLibsDir.get().asFile, "$it/libetebase_uniffi.so")
+    }
+    workingDir nativeRoot
+    executable 'cargo'
+    argumentProviders.add(new UniffiBindgenArguments(libraries,
+            ['--config', 'uniffi-android.toml', '--out-dir', outDir.absolutePath]))
+    inputs.files(cargoInputs)
+    inputs.files(new File(nativeRoot, 'uniffi.toml'), new File(nativeRoot, 'uniffi-android.toml'))
+    inputs.dir(new File(nativeRoot, 'uniffi-bindgen'))
+    inputs.dir(jniLibsDir)
+    outputs.dir(bindingsDir)
+    doFirst { outDir.deleteDir() }
 }
 
 android {
@@ -31,16 +73,17 @@ android {
         targetCompatibility JavaVersion.VERSION_17
     }
     sourceSets.main {
-        java.setSrcDirs(['src/main/java/com/etebase/client/exceptions',
-                         'src/main/java/com/etebase/client/http_bridge',
-                         'src/main/java/com/etebase/client/internal',
-                         'build/generated/sources/etebase/java'])
-        jniLibs.setSrcDirs(['build/generated/jniLibs'])
+        // A directory, not a task provider (which AGP rejects here), so that lint checks the
+        // generated code too; preBuild runs the generation task first.
+        kotlin.srcDir(bindingsDir.get().asFile)
+        jniLibs.setSrcDirs([jniLibsDir.get().asFile])
     }
     publishing { singleVariant('release') { withSourcesJar() } }
 }
-tasks.named('preBuild').configure { dependsOn buildNative }
+tasks.named('preBuild').configure { dependsOn generateBindings }
 dependencies {
+    // UniFFI's generated code loads the library through JNA and uses @RequiresApi.
+    implementation 'net.java.dev.jna:jna:5.19.1@aar'
     implementation 'androidx.annotation:annotation:1.11.0'
     api 'com.squareup.okhttp3:okhttp:5.5.1'
     androidTestImplementation 'androidx.test:runner:1.7.0'
