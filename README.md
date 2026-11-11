@@ -98,7 +98,7 @@ or repeated items in batches. With a disposable signup-enabled server they also 
 end-to-end tests through OkHttp:
 
 ```sh
-podman run --rm -p 127.0.0.1:3735:3735 ghcr.io/nikossvnk/etesync-server/test-server:latest
+podman run --rm -p 127.0.0.1:3735:3735 ghcr.io/nikossvnk/ciphwren-server/test-server:latest
 ./gradlew -PjvmOnly :client-jvm:test -PetebaseServerUrl=http://127.0.0.1:3735
 ```
 
