@@ -49,7 +49,7 @@ try {
 
 - JDK 25 and the included Gradle 9.8.2 wrapper; Java 17 bytecode, Kotlin 2.4.21.
 - Rust/rustup; `rust-toolchain.toml` selects the toolchain. Cargo dependencies,
-  including the maintained `nikossvnk/etebase-rs` revision and UniFFI 0.32.2, are locked.
+  including the maintained etebase-rs revision and UniFFI 0.32.2, are locked.
 - A native C compiler and build tools (`build-essential`, `pkg-config` on Ubuntu).
 - For Android: SDK Platform 37.0, Build Tools 37.0.0, NDK 30.0.16248370, and
   `ANDROID_HOME`. Android builds require Linux or macOS host NDK tools.
@@ -98,7 +98,7 @@ or repeated items in batches. With a disposable signup-enabled server they also 
 end-to-end tests through OkHttp:
 
 ```sh
-podman run --rm -p 127.0.0.1:3735:3735 ghcr.io/nikossvnk/etesync-server/test-server:latest
+podman run --rm -p 127.0.0.1:3735:3735 ghcr.io/nikossvnk/ciphwren-server/test-server:latest
 ./gradlew -PjvmOnly :client-jvm:test -PetebaseServerUrl=http://127.0.0.1:3735
 ```
 

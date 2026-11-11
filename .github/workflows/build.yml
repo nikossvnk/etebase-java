@@ -136,7 +136,7 @@ jobs:
       - name: Start disposable Etebase test server
         if: runner.os == 'Linux'
         run: |
-          docker run -d -p 127.0.0.1:3735:3735 ghcr.io/nikossvnk/etesync-server/test-server:latest
+          docker run -d -p 127.0.0.1:3735:3735 ghcr.io/nikossvnk/ciphwren-server/test-server:latest
           for _ in $(seq 60); do
             curl -fsS -o /dev/null http://127.0.0.1:3735/api/v1/authentication/is_etebase/ && break
             sleep 1
